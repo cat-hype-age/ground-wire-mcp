@@ -1,0 +1,12 @@
+[project]
+name = "ground-wire-tools"
+version = "1.0.0"
+description = "MCP server for OfficeQA Treasury Bulletin navigation and external data lookups"
+requires-python = ">=3.11"
+dependencies = [
+    "dedalus-mcp>=0.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
