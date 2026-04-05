@@ -164,7 +164,30 @@ async def msg_ep(req: Request):
 
 async def health(req: Request): return JSONResponse({"status":"ok","tools":7,"corpus":COK})
 
-app=Starlette(routes=[Route("/sse",sse_ep),Route("/messages",msg_ep,methods=["POST"]),Route("/health",health),Route("/",health)])
+# --- Streamable HTTP Transport (POST /mcp → SSE response) ---
+async def mcp_ep(req: Request):
+    b=await req.json(); method,mid,p=b.get("method",""),b.get("id"),b.get("params",{})
+    resp=None
+    if method=="initialize":
+        resp={"jsonrpc":"2.0","id":mid,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"ground-wire-tools","version":"1.0.0"}}}
+    elif method=="notifications/initialized":
+        return Response(status_code=202)
+    elif method=="tools/list":
+        resp={"jsonrpc":"2.0","id":mid,"result":{"tools":TOOLS}}
+    elif method=="tools/call":
+        h=H.get(p.get("name",""))
+        if h:
+            try: resp={"jsonrpc":"2.0","id":mid,"result":{"content":[{"type":"text","text":h(p.get("arguments",{}))}]}}
+            except Exception as e: resp={"jsonrpc":"2.0","id":mid,"result":{"content":[{"type":"text","text":f"Error: {e}"}]}}
+        else: resp={"jsonrpc":"2.0","id":mid,"error":{"code":-32601,"message":f"Unknown: {p.get('name')}"}}
+    elif mid: resp={"jsonrpc":"2.0","id":mid,"error":{"code":-32601,"message":f"Unknown: {method}"}}
+    if resp:
+        async def gen():
+            yield {"event":"message","data":json.dumps(resp)}
+        return EventSourceResponse(gen(), media_type="text/event-stream")
+    return Response(status_code=202)
+
+app=Starlette(routes=[Route("/sse",sse_ep),Route("/messages",msg_ep,methods=["POST"]),Route("/mcp",mcp_ep,methods=["POST"]),Route("/health",health),Route("/",health)])
 
 if __name__=="__main__":
     import uvicorn; uvicorn.run(app,host="0.0.0.0",port=int(os.environ.get("PORT",8080)))
